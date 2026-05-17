@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+
+    <!-- PWA manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Favicon / icon -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png" />
+
+    <!-- Viewport — lock zoom so it feels native -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+
+    <!-- iOS home screen / PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MusicTube" />
+
+    <!-- Android / Chrome theme -->
+    <meta name="theme-color" content="#05050C" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- App description for search engines / share cards -->
+    <meta name="description" content="Stream music from YouTube — works as an app on any device." />
+    <meta name="application-name" content="MusicTube" />
+
+    <title>MusicTube</title>
+
+    <!-- Google Identity Services for YouTube OAuth -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

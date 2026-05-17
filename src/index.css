@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: linear-gradient(180deg, #05050C 0%, #0A0A17 100%);
+  background-attachment: fixed;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* Scrollbar */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Custom scrubber */
+.scrubber {
+  --progress: 0%;
+  background: linear-gradient(
+    to right,
+    #FF3B6B 0%,
+    #FF3B6B var(--progress),
+    transparent var(--progress),
+    transparent 100%
+  );
+}
+.scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #FF3B6B;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(255,59,107,0.4);
+}
+.scrubber::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #FF3B6B;
+  cursor: pointer;
+  border: none;
+}
+
+/* Glass card */
+.glass {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Safe area bottom padding */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
+}
+
+/* Prevent text selection on interactive elements */
+button, a {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Now playing glow */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Remove number input spinners */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+}
+
+/* Remove search input decorations */
+input[type=search]::-webkit-search-decoration,
+input[type=search]::-webkit-search-cancel-button,
+input[type=search]::-webkit-search-results-button,
+input[type=search]::-webkit-search-results-decoration {
+  display: none;
+}
+
+/* Smooth scrolling on touch */
+.overflow-y-auto,
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* w-13 / h-13 = 52px */
+.w-13 { width: 52px; }
+.h-13 { height: 52px; }
+
+/* w-4.5 / h-4.5 = 18px */
+.w-4\.5 { width: 18px; }
+.h-4\.5 { height: 18px; }
+
+/* border-3 */
+.border-3 { border-width: 3px; }

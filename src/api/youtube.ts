@@ -74,6 +74,13 @@ function isLikelyAlbumTitle(title: string): boolean {
   return /\b(album|full album|ep|ost|soundtrack|mixtape)\b/i.test(title)
 }
 
+function isLikelySong(track: Track): boolean {
+  const noisyTitle = /\b(reaction|reacts|review|breakdown|interview|podcast|documentary|explained|tutorial|lesson|mashup)\b/i
+  if (noisyTitle.test(track.title)) return false
+  if (track.duration !== null && (track.duration < 45 || track.duration > 600)) return false
+  return true
+}
+
 // ── Raw YouTube API types ────────────────────────────────────────────────────
 
 interface YoutubeSearchItem {
@@ -158,6 +165,32 @@ export async function searchYouTube(
   const albums = pageToken ? [] : await searchAlbumCollections(query, accessToken)
 
   return { songs, playlists, albums, artists, nextPageToken: json.nextPageToken }
+}
+
+export async function searchSongs(
+  query: string,
+  accessToken?: string,
+  maxResults = 12,
+): Promise<Track[]> {
+  const params = new URLSearchParams({
+    part: 'snippet',
+    q: query,
+    maxResults: String(maxResults),
+    type: 'video',
+    videoCategoryId: '10',
+    ...(accessToken ? {} : { key: apiKey() }),
+  })
+
+  const headers: Record<string, string> = {}
+  if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
+
+  const res = await fetch(`${BASE}/search?${params}`, { headers })
+  if (!res.ok) return []
+  const json = await res.json()
+  const items: YoutubeSearchItem[] = json.items ?? []
+  const videoIDs = items.map(i => i.id.videoId).filter((id): id is string => Boolean(id))
+  const details = await fetchVideoDetails(videoIDs, accessToken)
+  return videoIDs.map(id => details[id]).filter(Boolean).map(videoToTrack).filter(isLikelySong)
 }
 
 export async function fetchVideoDetails(
@@ -304,8 +337,8 @@ export async function fetchRelatedTracks(
 ): Promise<Track[]> {
   const clean = artistName.replace(/ - Topic$/i, '').trim()
   try {
-    const results = await searchYouTube(`${clean} music`, undefined, accessToken)
-    return results.songs.filter(t => t.youtubeVideoID !== excludeVideoID).slice(0, 15)
+    const results = await searchSongs(`${clean} music`, accessToken, 15)
+    return results.filter(t => t.youtubeVideoID !== excludeVideoID).slice(0, 15)
   } catch {
     return []
   }

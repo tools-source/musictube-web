@@ -15,10 +15,17 @@ export default function HomeView() {
   const homeFilter = useStore(s => s.homeFilter)
   const setHomeFilter = useStore(s => s.setHomeFilter)
   const featuredTracks = useStore(s => s.featuredTracks)
+  const recommendationTracks = useStore(s => s.recommendationTracks)
+  const isLoadingRecommendations = useStore(s => s.isLoadingRecommendations)
+  const tasteProfile = useStore(s => s.tasteProfile)
   const isLoadingHome = useStore(s => s.isLoadingHome)
   const hasLoadedHome = useStore(s => s.hasLoadedHome)
   const historyTracks = useStore(s => s.historyTracks)
+  const likedTracks = useStore(s => s.likedTracks)
+  const likedTrackIDs = useStore(s => s.likedTrackIDs)
+  const savedTrackIDs = useStore(s => s.savedTrackIDs)
   const loadHome = useStore(s => s.loadHome)
+  const loadRecommendations = useStore(s => s.loadRecommendations)
   const signIn = useStore(s => s.signIn)
   const isSigningIn = useStore(s => s.isSigningIn)
   const play = useStore(s => s.play)
@@ -27,6 +34,24 @@ export default function HomeView() {
   useEffect(() => {
     if (!hasLoadedHome) loadHome()
   }, [hasLoadedHome, loadHome])
+
+  useEffect(() => {
+    const hasTaste =
+      historyTracks.length > 0 ||
+      likedTracks.length > 0 ||
+      likedTrackIDs.size > 0 ||
+      savedTrackIDs.size > 0 ||
+      Object.keys(tasteProfile.artists).length > 0 ||
+      Object.keys(tasteProfile.terms).length > 0
+    if (hasTaste) loadRecommendations()
+  }, [
+    historyTracks.length,
+    likedTracks.length,
+    likedTrackIDs.size,
+    savedTrackIDs.size,
+    tasteProfile.updatedAt,
+    loadRecommendations,
+  ])
 
   const continueTracks = useMemo<Track[]>(() => {
     const base = historyTracks.length > 0 ? historyTracks : featuredTracks
@@ -42,19 +67,47 @@ export default function HomeView() {
   const recommendedTracks = useMemo<Track[]>(() => {
     if (homeFilter === 'Playlists') return []
 
-    // Build a personalized list: tracks from artists in history first, then remaining trending
-    let base = featuredTracks
-    if (homeFilter === 'Arabic') base = featuredTracks.filter(t => isArabic(t.title, t.artist))
-    else if (homeFilter === 'Worship') base = featuredTracks.filter(t => isWorship(t.title, t.artist))
-    else if (homeFilter === 'Recent') base = featuredTracks
+    const hasTaste =
+      historyTracks.length > 0 ||
+      likedTracks.length > 0 ||
+      likedTrackIDs.size > 0 ||
+      savedTrackIDs.size > 0 ||
+      Object.keys(tasteProfile.artists).length > 0
 
-    if (historyTracks.length === 0) return base
+    const base = hasTaste && recommendationTracks.length > 0
+      ? [...recommendationTracks, ...featuredTracks]
+      : featuredTracks
 
-    const recentArtists = new Set(historyTracks.slice(0, 20).map(t => t.artist.toLowerCase()))
-    const preferred = base.filter(t => recentArtists.has(t.artist.toLowerCase()))
-    const rest = base.filter(t => !recentArtists.has(t.artist.toLowerCase()))
-    return [...preferred, ...rest]
-  }, [homeFilter, featuredTracks, historyTracks])
+    const filtered = base.filter(track => {
+      if (homeFilter === 'Arabic') return isArabic(track.title, track.artist)
+      if (homeFilter === 'Worship') return isWorship(track.title, track.artist)
+      return true
+    })
+
+    const excluded = new Set(historyTracks.slice(0, 10).map(t => t.youtubeVideoID))
+    const seen = new Set<string>()
+    return filtered.filter(track => {
+      if (seen.has(track.youtubeVideoID) || excluded.has(track.youtubeVideoID)) return false
+      seen.add(track.youtubeVideoID)
+      return true
+    })
+  }, [
+    homeFilter,
+    featuredTracks,
+    recommendationTracks,
+    historyTracks,
+    likedTracks,
+    likedTrackIDs.size,
+    savedTrackIDs.size,
+    tasteProfile.artists,
+  ])
+
+  const hasTaste =
+    historyTracks.length > 0 ||
+    likedTracks.length > 0 ||
+    likedTrackIDs.size > 0 ||
+    savedTrackIDs.size > 0 ||
+    Object.keys(tasteProfile.artists).length > 0
 
   const displayName = user?.name.split(' ')[0] ?? 'Guest'
 
@@ -66,7 +119,7 @@ export default function HomeView() {
           <p className="text-sm font-medium text-text-secondary">{greeting()}</p>
           <h1 className="text-3xl font-bold text-text-primary leading-tight">{displayName}</h1>
           <p className="text-xs text-text-tertiary mt-0.5">
-            {accessToken ? 'Connected to YouTube' : 'Guest mode · local recommendations'}
+            {accessToken ? 'Connected to YouTube' : hasTaste ? 'Learning from your listening' : 'Guest mode · trending until you listen'}
           </p>
         </div>
 
@@ -129,9 +182,9 @@ export default function HomeView() {
       {/* Recommended */}
       {homeFilter !== 'Playlists' && (
         <section>
-          <SectionHeader title="Recommended for you" />
+          <SectionHeader title={hasTaste ? 'Recommended from your taste' : 'Trending music'} />
           <div className="mt-3 space-y-0">
-            {!hasLoadedHome || isLoadingHome
+            {!hasLoadedHome || isLoadingHome || (hasTaste && isLoadingRecommendations && recommendationTracks.length === 0)
               ? Array.from({ length: 4 }).map((_, i) => <SkeletonTrackRow key={i} />)
               : recommendedTracks.length === 0
               ? (

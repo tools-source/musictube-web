@@ -1,4 +1,4 @@
-const CACHE = 'musictube-v3'
+const CACHE = 'musictube-v4'
 const APP_SCOPE = new URL(self.registration.scope).pathname
 
 // Assets to pre-cache on install

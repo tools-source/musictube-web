@@ -38,6 +38,23 @@ interface YTPlayer {
   destroy(): void
 }
 
+type MediaSessionAction =
+  | 'play'
+  | 'pause'
+  | 'previoustrack'
+  | 'nexttrack'
+  | 'seekbackward'
+  | 'seekforward'
+  | 'seekto'
+
+type MediaSessionWithPosition = MediaSession & {
+  setPositionState?: (state?: { duration?: number; playbackRate?: number; position?: number }) => void
+  setActionHandler: (
+    action: MediaSessionAction,
+    handler: ((details?: { seekTime?: number; seekOffset?: number; fastSeek?: boolean }) => void) | null,
+  ) => void
+}
+
 let ytReady = false
 let ytCallbacks: (() => void)[] = []
 
@@ -65,6 +82,7 @@ export default function YouTubePlayer() {
   const playbackState = useStore(s => s.playbackState)
   const setPlaybackState = useStore(s => s.setPlaybackState)
   const playNext = useStore(s => s.playNext)
+  const playPrev = useStore(s => s.playPrev)
   const repeatMode = useStore(s => s.repeatMode)
 
   const autoQueueRelated = useStore(s => s.autoQueueRelated)
@@ -99,6 +117,8 @@ export default function YouTubePlayer() {
         playerVars: {
           autoplay: 1,
           playsinline: 1,
+          enablejsapi: 1,
+          origin: window.location.origin,
           controls: 0,
           disablekb: 1,
           modestbranding: 1,
@@ -127,6 +147,86 @@ export default function YouTubePlayer() {
       p.pauseVideo()
     }
   }, [playbackState.isPlaying, playbackState.isLoading])
+
+  useEffect(() => {
+    const mediaSession = 'mediaSession' in navigator ? navigator.mediaSession as MediaSessionWithPosition : null
+    if (!mediaSession || !nowPlaying) return
+    const setHandler = (
+      action: MediaSessionAction,
+      handler: ((details?: { seekTime?: number; seekOffset?: number; fastSeek?: boolean }) => void) | null,
+    ) => {
+      try {
+        mediaSession.setActionHandler(action, handler)
+      } catch {
+        // Older mobile browsers may expose Media Session but not every action.
+      }
+    }
+
+    if (typeof MediaMetadata !== 'undefined') {
+      mediaSession.metadata = new MediaMetadata({
+        title: nowPlaying.title,
+        artist: nowPlaying.artist,
+        album: 'MusicTube',
+        artwork: nowPlaying.artworkURL
+          ? [
+              { src: nowPlaying.artworkURL, sizes: '96x96', type: 'image/jpeg' },
+              { src: nowPlaying.artworkURL, sizes: '512x512', type: 'image/jpeg' },
+            ]
+          : [],
+      })
+    }
+
+    setHandler('play', () => {
+      playerRef.current?.playVideo()
+      setPlaybackState({ isPlaying: true })
+    })
+    setHandler('pause', () => {
+      playerRef.current?.pauseVideo()
+      setPlaybackState({ isPlaying: false })
+    })
+    setHandler('previoustrack', () => playPrev())
+    setHandler('nexttrack', () => playNext())
+    setHandler('seekbackward', details => {
+      const current = playerRef.current?.getCurrentTime() ?? playbackState.currentTime
+      const next = Math.max(0, current - (details?.seekOffset ?? 10))
+      playerRef.current?.seekTo(next, true)
+      setPlaybackState({ currentTime: next })
+    })
+    setHandler('seekforward', details => {
+      const current = playerRef.current?.getCurrentTime() ?? playbackState.currentTime
+      const duration = playerRef.current?.getDuration() ?? playbackState.duration
+      const next = Math.min(duration || current + 10, current + (details?.seekOffset ?? 10))
+      playerRef.current?.seekTo(next, true)
+      setPlaybackState({ currentTime: next })
+    })
+    setHandler('seekto', details => {
+      if (typeof details?.seekTime !== 'number') return
+      playerRef.current?.seekTo(details.seekTime, true)
+      setPlaybackState({ currentTime: details.seekTime })
+    })
+
+    return () => {
+      ;(['play', 'pause', 'previoustrack', 'nexttrack', 'seekbackward', 'seekforward', 'seekto'] as MediaSessionAction[])
+        .forEach(action => setHandler(action, null))
+    }
+  }, [nowPlaying?.youtubeVideoID, playNext, playPrev, setPlaybackState])
+
+  useEffect(() => {
+    const mediaSession = 'mediaSession' in navigator ? navigator.mediaSession as MediaSessionWithPosition : null
+    if (!mediaSession) return
+    mediaSession.playbackState = playbackState.isPlaying ? 'playing' : 'paused'
+    if (playbackState.duration > 0 && mediaSession.setPositionState) {
+      try {
+        mediaSession.setPositionState({
+          duration: playbackState.duration,
+          playbackRate: 1,
+          position: Math.min(playbackState.currentTime, playbackState.duration),
+        })
+      } catch {
+        // Some browsers throw while metadata is settling; playback still works.
+      }
+    }
+  }, [playbackState.currentTime, playbackState.duration, playbackState.isPlaying])
 
   // Tick to update currentTime/duration/buffer
   function startTick() {

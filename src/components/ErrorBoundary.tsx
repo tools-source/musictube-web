@@ -10,6 +10,10 @@ export default class ErrorBoundary extends Component<Props, State> {
     return { error }
   }
 
+  componentDidCatch(error: Error, info: { componentStack: string }) {
+    console.error('MusicTube render error', error, info.componentStack)
+  }
+
   render() {
     if (this.state.error) {
       return (
@@ -20,6 +24,11 @@ export default class ErrorBoundary extends Component<Props, State> {
           <div>
             <p className="text-text-primary font-semibold text-lg">Something went wrong</p>
             <p className="text-text-secondary text-sm mt-1">{this.state.error.message}</p>
+            {import.meta.env.DEV && this.state.error.stack && (
+              <pre className="mt-4 max-w-[90vw] overflow-auto text-left text-[10px] text-text-tertiary">
+                {this.state.error.stack}
+              </pre>
+            )}
           </div>
           <button
             onClick={() => { this.setState({ error: null }); window.location.reload() }}

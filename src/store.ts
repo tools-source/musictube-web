@@ -10,9 +10,11 @@ import type {
   LibraryTab,
   PlaybackState,
   RepeatMode,
+  TasteProfile,
 } from './types'
 import {
   searchYouTube,
+  searchSongs,
   fetchTrendingMusic,
   fetchMyPlaylists,
   fetchLikedSongs,
@@ -44,6 +46,11 @@ interface AppStore {
   isLoadingHome: boolean
   hasLoadedHome: boolean
   loadHome: () => Promise<void>
+  recommendationTracks: Track[]
+  isLoadingRecommendations: boolean
+  recommendationSignature: string
+  tasteProfile: TasteProfile
+  loadRecommendations: () => Promise<void>
 
   // Search
   searchQuery: string
@@ -104,6 +111,69 @@ const EMPTY_PLAYBACK: PlaybackState = {
   bufferedFraction: 0,
   isLoading: false,
 }
+const EMPTY_TASTE: TasteProfile = { artists: {}, terms: {}, updatedAt: 0 }
+
+const STOP_WORDS = new Set([
+  'official', 'video', 'audio', 'lyrics', 'lyric', 'music', 'feat', 'ft', 'the', 'and', 'with',
+  'full', 'album', 'remix', 'live', 'visualizer', 'topic', 'vevo', 'hd', 'mv',
+])
+
+function normalizeTasteKey(value: string): string {
+  return value
+    .replace(/ - Topic$/i, '')
+    .replace(/VEVO$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function titleTerms(title: string): string[] {
+  return title
+    .toLowerCase()
+    .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(term => term.length > 2 && !STOP_WORDS.has(term))
+    .slice(0, 5)
+}
+
+function bumpMap(map: Record<string, number>, key: string, weight: number): Record<string, number> {
+  const clean = normalizeTasteKey(key)
+  if (!clean) return map
+  const next = { ...map }
+  const score = Math.max(0, Math.min(100, (next[clean] ?? 0) + weight))
+  if (score === 0) delete next[clean]
+  else next[clean] = score
+  return next
+}
+
+function learnFromTrack(profile: TasteProfile, track: Track, weight: number): TasteProfile {
+  let artists = bumpMap(profile.artists, track.artist, weight)
+  let terms = profile.terms
+  for (const term of titleTerms(track.title)) terms = bumpMap(terms, term, Math.max(1, weight / 3))
+  return { artists, terms, updatedAt: Date.now() }
+}
+
+function learnFromQuery(profile: TasteProfile, query: string): TasteProfile {
+  let terms = profile.terms
+  for (const term of titleTerms(query)) terms = bumpMap(terms, term, 1.5)
+  return { ...profile, terms, updatedAt: Date.now() }
+}
+
+function topKeys(map: Record<string, number>, limit: number): string[] {
+  return Object.entries(map)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([key]) => key)
+}
+
+function uniqueTracks(tracks: Track[]): Track[] {
+  const seen = new Set<string>()
+  return tracks.filter(track => {
+    if (seen.has(track.youtubeVideoID)) return false
+    seen.add(track.youtubeVideoID)
+    return true
+  })
+}
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
@@ -149,6 +219,10 @@ export const useStore = create<AppStore>()(
       featuredTracks: [],
       isLoadingHome: false,
       hasLoadedHome: false,
+      recommendationTracks: [],
+      isLoadingRecommendations: false,
+      recommendationSignature: '',
+      tasteProfile: EMPTY_TASTE,
 
       loadHome: async () => {
         if (get().isLoadingHome) return
@@ -159,6 +233,71 @@ export const useStore = create<AppStore>()(
           set({ featuredTracks: tracks, hasLoadedHome: true })
         } finally {
           set({ isLoadingHome: false })
+        }
+      },
+
+      loadRecommendations: async () => {
+        const {
+          accessToken,
+          featuredTracks,
+          historyTracks,
+          likedTracks,
+          likedTrackIDs,
+          savedTrackIDs,
+          recentSearches,
+          recommendationSignature,
+          isLoadingRecommendations,
+          tasteProfile,
+        } = get()
+        if (isLoadingRecommendations) return
+
+        const knownTracks = uniqueTracks([...likedTracks, ...historyTracks, ...featuredTracks])
+        const likedKnown = knownTracks.filter(t => likedTrackIDs.has(t.youtubeVideoID))
+        const savedKnown = knownTracks.filter(t => savedTrackIDs.has(t.youtubeVideoID))
+        let profile = tasteProfile
+        if (Object.keys(profile.artists).length === 0 && Object.keys(profile.terms).length === 0) {
+          for (const track of likedKnown) profile = learnFromTrack(profile, track, 4)
+          for (const track of savedKnown) profile = learnFromTrack(profile, track, 3)
+          for (const track of historyTracks.slice(0, 20)) profile = learnFromTrack(profile, track, 1)
+          for (const query of recentSearches.slice(0, 6)) profile = learnFromQuery(profile, query)
+        }
+
+        const artistSeeds = topKeys(profile.artists, 5)
+        const termSeeds = topKeys(profile.terms, 4)
+        const recommendationTermSeeds = artistSeeds.length > 0 ? [] : termSeeds
+        const recentArtistSeeds = [...likedKnown, ...historyTracks]
+          .map(t => normalizeTasteKey(t.artist))
+          .filter(Boolean)
+          .filter((artist, index, list) => list.indexOf(artist) === index)
+          .slice(0, 4)
+        const seeds = [
+          ...artistSeeds.map(a => `${a} songs`),
+          ...recentArtistSeeds.map(a => `${a} music`),
+          ...recommendationTermSeeds.map(t => `${t} music playlist`),
+        ]
+          .filter(Boolean)
+          .slice(0, 8)
+
+        const signature = JSON.stringify({
+          version: 3,
+          artists: artistSeeds,
+          terms: termSeeds,
+          recent: historyTracks.slice(0, 8).map(t => t.youtubeVideoID),
+          liked: likedKnown.slice(0, 8).map(t => t.youtubeVideoID),
+          saved: savedKnown.slice(0, 8).map(t => t.youtubeVideoID),
+        })
+        if (signature === recommendationSignature && get().recommendationTracks.length > 0) return
+
+        set({ isLoadingRecommendations: true, recommendationSignature: signature })
+        try {
+          const exclude = new Set([...historyTracks, ...likedKnown, ...savedKnown].map(t => t.youtubeVideoID))
+          const batches = await Promise.all(seeds.map(seed => searchSongs(seed, accessToken ?? undefined, 8).catch(() => [])))
+          const recommendations = uniqueTracks(batches.flat())
+            .filter(track => !exclude.has(track.youtubeVideoID))
+            .slice(0, 30)
+          set({ recommendationTracks: recommendations })
+        } finally {
+          set({ isLoadingRecommendations: false })
         }
       },
 
@@ -209,7 +348,7 @@ export const useStore = create<AppStore>()(
       recordRecentSearch: q => {
         set(s => {
           const list = [q, ...s.recentSearches.filter(r => r !== q)].slice(0, 12)
-          return { recentSearches: list }
+          return { recentSearches: list, tasteProfile: learnFromQuery(s.tasteProfile, q) }
         })
       },
       removeRecentSearch: q => set(s => ({ recentSearches: s.recentSearches.filter(r => r !== q) })),
@@ -219,9 +358,14 @@ export const useStore = create<AppStore>()(
       toggleLike: track => {
         set(s => {
           const ids = new Set(s.likedTrackIDs)
-          if (ids.has(track.youtubeVideoID)) ids.delete(track.youtubeVideoID)
+          const isLiked = ids.has(track.youtubeVideoID)
+          if (isLiked) ids.delete(track.youtubeVideoID)
           else ids.add(track.youtubeVideoID)
-          return { likedTrackIDs: ids }
+          return {
+            likedTrackIDs: ids,
+            tasteProfile: learnFromTrack(s.tasteProfile, track, isLiked ? -4 : 5),
+            recommendationSignature: '',
+          }
         })
       },
 
@@ -229,9 +373,14 @@ export const useStore = create<AppStore>()(
       toggleSave: track => {
         set(s => {
           const ids = new Set(s.savedTrackIDs)
-          if (ids.has(track.youtubeVideoID)) ids.delete(track.youtubeVideoID)
+          const isSaved = ids.has(track.youtubeVideoID)
+          if (isSaved) ids.delete(track.youtubeVideoID)
           else ids.add(track.youtubeVideoID)
-          return { savedTrackIDs: ids }
+          return {
+            savedTrackIDs: ids,
+            tasteProfile: learnFromTrack(s.tasteProfile, track, isSaved ? -2 : 3),
+            recommendationSignature: '',
+          }
         })
       },
 
@@ -239,7 +388,11 @@ export const useStore = create<AppStore>()(
       addToHistory: track => {
         set(s => {
           const list = [track, ...s.historyTracks.filter(t => t.youtubeVideoID !== track.youtubeVideoID)].slice(0, 100)
-          return { historyTracks: list }
+          return {
+            historyTracks: list,
+            tasteProfile: learnFromTrack(s.tasteProfile, track, 1),
+            recommendationSignature: '',
+          }
         })
       },
       clearHistory: () => set({ historyTracks: [] }),
@@ -252,10 +405,13 @@ export const useStore = create<AppStore>()(
         set({ playlists: pl })
         const liked = await fetchLikedSongs(accessToken)
         const likedIDs = new Set(liked.map(t => t.youtubeVideoID))
+        const tasteProfile = liked.reduce((profile, track) => learnFromTrack(profile, track, 3), get().tasteProfile)
         set(s => ({
           likedTrackIDs: likedIDs,
           likedTracks: liked,
           playlistTracks: { ...s.playlistTracks, LL: liked },
+          tasteProfile,
+          recommendationSignature: '',
         }))
       },
 
@@ -410,6 +566,9 @@ export const useStore = create<AppStore>()(
       partialize: s => ({
         user: s.user,
         accessToken: s.accessToken,
+        tasteProfile: s.tasteProfile,
+        recommendationTracks: s.recommendationTracks,
+        recommendationSignature: s.recommendationSignature,
         recentSearches: s.recentSearches,
         likedTrackIDs: [...s.likedTrackIDs],
         likedTracks: s.likedTracks,
@@ -422,7 +581,7 @@ export const useStore = create<AppStore>()(
         repeatMode: s.repeatMode,
       }),
       merge: (persisted: unknown, current) => {
-        const p = persisted as Partial<AppStore> & { likedTrackIDs?: string[]; savedTrackIDs?: string[] }
+        const p = persisted as Partial<AppStore> & { likedTrackIDs?: string[]; savedTrackIDs?: string[]; tasteProfile?: Partial<TasteProfile> }
         return {
           ...current,
           ...p,
@@ -434,6 +593,13 @@ export const useStore = create<AppStore>()(
           customPlaylists: Array.isArray(p.customPlaylists) ? p.customPlaylists : [],
           savedCollections: Array.isArray(p.savedCollections) ? p.savedCollections : [],
           recentSearches: Array.isArray(p.recentSearches) ? p.recentSearches : [],
+          tasteProfile: {
+            artists: p.tasteProfile?.artists ?? {},
+            terms: p.tasteProfile?.terms ?? {},
+            updatedAt: p.tasteProfile?.updatedAt ?? 0,
+          },
+          recommendationTracks: Array.isArray(p.recommendationTracks) ? p.recommendationTracks : [],
+          recommendationSignature: typeof p.recommendationSignature === 'string' ? p.recommendationSignature : '',
         }
       },
     }

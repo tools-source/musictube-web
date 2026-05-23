@@ -35,6 +35,12 @@ export interface SearchResponse {
   nextPageToken?: string
 }
 
+export interface TasteProfile {
+  artists: Record<string, number>
+  terms: Record<string, number>
+  updatedAt: number
+}
+
 export interface YouTubeUser {
   name: string
   email: string

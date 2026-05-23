@@ -32,32 +32,52 @@ function videoToTrack(item: YoutubeVideoItem): Track {
 
 function searchItemToTrack(item: YoutubeSearchItem): Track {
   return {
-    id: item.id.videoId,
+    id: item.id.videoId!,
     title: item.snippet.title,
     artist: item.snippet.channelTitle,
     artworkURL: bestThumbnail(item.snippet.thumbnails),
     duration: null,
-    youtubeVideoID: item.id.videoId,
+    youtubeVideoID: item.id.videoId!,
     viewCount: null,
   }
 }
 
-function searchItemToCollection(item: YoutubeSearchItem, kind: 'playlist' | 'album' | 'artist'): MusicCollection {
+function searchItemToCollection(
+  item: YoutubeSearchItem,
+  kind: 'playlist' | 'album' | 'artist',
+  itemCount = 0,
+): MusicCollection {
   return {
     id: `${kind}:${item.id.playlistId ?? item.id.channelId ?? item.id.videoId}`,
     sourceID: item.id.playlistId ?? item.id.channelId ?? '',
     title: item.snippet.title,
     subtitle: item.snippet.channelTitle,
     artworkURL: bestThumbnail(item.snippet.thumbnails),
-    itemCount: 0,
+    itemCount,
     kind,
   }
+}
+
+function playlistItemToCollection(item: YoutubePlaylistItem, kind: 'playlist' | 'album'): MusicCollection {
+  return {
+    id: `${kind}:${item.id}`,
+    sourceID: item.id,
+    title: item.snippet.title,
+    subtitle: item.snippet.channelTitle ?? '',
+    artworkURL: bestThumbnail(item.snippet.thumbnails),
+    itemCount: item.contentDetails.itemCount,
+    kind,
+  }
+}
+
+function isLikelyAlbumTitle(title: string): boolean {
+  return /\b(album|full album|ep|ost|soundtrack|mixtape)\b/i.test(title)
 }
 
 // ── Raw YouTube API types ────────────────────────────────────────────────────
 
 interface YoutubeSearchItem {
-  id: { videoId: string; playlistId?: string; channelId?: string }
+  id: { videoId?: string; playlistId?: string; channelId?: string }
   snippet: {
     title: string
     channelTitle: string
@@ -81,6 +101,7 @@ interface YoutubePlaylistItem {
   snippet: {
     title: string
     description: string
+    channelTitle?: string
     thumbnails: Record<string, { url: string }>
   }
   contentDetails: { itemCount: number }
@@ -110,7 +131,7 @@ export async function searchYouTube(
   const json = await res.json()
 
   const items: YoutubeSearchItem[] = json.items ?? []
-  const videoIDs = items.filter(i => i.id.videoId).map(i => i.id.videoId)
+  const videoIDs = items.map(i => i.id.videoId).filter((id): id is string => Boolean(id))
 
   let videoDetails: Record<string, YoutubeVideoItem> = {}
   if (videoIDs.length > 0) {
@@ -119,17 +140,24 @@ export async function searchYouTube(
 
   const songs: Track[] = items
     .filter(i => i.id.videoId)
-    .map(i => videoDetails[i.id.videoId] ? videoToTrack(videoDetails[i.id.videoId]) : searchItemToTrack(i))
+    .map(i => videoDetails[i.id.videoId!] ? videoToTrack(videoDetails[i.id.videoId!]) : searchItemToTrack(i))
 
-  const playlists: MusicCollection[] = items
+  const rawPlaylists: MusicCollection[] = items
     .filter(i => i.id.playlistId)
     .map(i => searchItemToCollection(i, 'playlist'))
+
+  const playlistDetails = await fetchPlaylistDetails(rawPlaylists.map(p => p.sourceID), accessToken)
+  const playlists = rawPlaylists
+    .map(p => playlistDetails[p.sourceID] ? playlistItemToCollection(playlistDetails[p.sourceID], 'playlist') : p)
+    .filter(p => !isLikelyAlbumTitle(p.title))
 
   const artists: MusicCollection[] = items
     .filter(i => i.id.channelId)
     .map(i => searchItemToCollection(i, 'artist'))
 
-  return { songs, playlists, albums: [], artists, nextPageToken: json.nextPageToken }
+  const albums = pageToken ? [] : await searchAlbumCollections(query, accessToken)
+
+  return { songs, playlists, albums, artists, nextPageToken: json.nextPageToken }
 }
 
 export async function fetchVideoDetails(
@@ -150,6 +178,53 @@ export async function fetchVideoDetails(
   const result: Record<string, YoutubeVideoItem> = {}
   for (const item of json.items ?? []) result[item.id] = item
   return result
+}
+
+export async function fetchPlaylistDetails(
+  ids: string[],
+  accessToken?: string,
+): Promise<Record<string, YoutubePlaylistItem>> {
+  const clean = [...new Set(ids.filter(Boolean))]
+  if (clean.length === 0) return {}
+
+  const params = new URLSearchParams({
+    part: 'snippet,contentDetails',
+    id: clean.join(','),
+    ...(accessToken ? {} : { key: apiKey() }),
+  })
+  const headers: Record<string, string> = {}
+  if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
+
+  const res = await fetch(`${BASE}/playlists?${params}`, { headers })
+  if (!res.ok) return {}
+  const json = await res.json()
+  const result: Record<string, YoutubePlaylistItem> = {}
+  for (const item of json.items ?? []) result[item.id] = item
+  return result
+}
+
+async function searchAlbumCollections(query: string, accessToken?: string): Promise<MusicCollection[]> {
+  const params = new URLSearchParams({
+    part: 'snippet',
+    q: `${query} album`,
+    maxResults: '12',
+    type: 'playlist',
+    ...(accessToken ? {} : { key: apiKey() }),
+  })
+  const headers: Record<string, string> = {}
+  if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
+
+  const res = await fetch(`${BASE}/search?${params}`, { headers })
+  if (!res.ok) return []
+  const json = await res.json()
+  const items: YoutubeSearchItem[] = json.items ?? []
+  const collections = items
+    .filter(i => i.id.playlistId)
+    .map(i => searchItemToCollection(i, 'album'))
+
+  const details = await fetchPlaylistDetails(collections.map(c => c.sourceID), accessToken)
+  const enriched = collections.map(c => details[c.sourceID] ? playlistItemToCollection(details[c.sourceID], 'album') : c)
+  return enriched.filter(c => c.itemCount !== 1 || isLikelyAlbumTitle(c.title))
 }
 
 export async function fetchMyPlaylists(accessToken: string): Promise<Playlist[]> {

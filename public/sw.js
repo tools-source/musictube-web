@@ -1,7 +1,8 @@
-const CACHE = 'musictube-v2'
+const CACHE = 'musictube-v3'
+const APP_SCOPE = new URL(self.registration.scope).pathname
 
 // Assets to pre-cache on install
-const PRECACHE = ['/']
+const PRECACHE = [APP_SCOPE]
 
 self.addEventListener('install', e => {
   e.waitUntil(
@@ -36,7 +37,7 @@ self.addEventListener('fetch', e => {
   // For navigation requests (HTML), use network-first so app always stays fresh
   if (request.mode === 'navigate') {
     e.respondWith(
-      fetch(request).catch(() => caches.match('/'))
+      fetch(request).catch(() => caches.match(APP_SCOPE))
     )
     return
   }

@@ -42,7 +42,7 @@ export interface YouTubeUser {
 }
 
 export type HomeFilter = 'All' | 'Arabic' | 'Worship' | 'Playlists' | 'Recent'
-export type SearchTab = 'Songs' | 'Albums' | 'Artists'
+export type SearchTab = 'Songs' | 'Albums' | 'Playlists' | 'Artists'
 export type LibraryTab = 'home' | 'search' | 'library'
 
 export interface PlaybackState {

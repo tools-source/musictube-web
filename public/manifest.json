@@ -2,8 +2,9 @@
   "name": "MusicTube",
   "short_name": "MusicTube",
   "description": "Stream music from YouTube — works as an app on any device.",
-  "start_url": "/",
-  "id": "/",
+  "start_url": "./",
+  "id": "./",
+  "scope": "./",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
@@ -12,19 +13,19 @@
   "categories": ["music", "entertainment"],
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -36,8 +37,8 @@
       "name": "Search",
       "short_name": "Search",
       "description": "Search for music",
-      "url": "/?tab=search",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "url": "./?tab=search",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
     }
   ],
   "related_applications": [],

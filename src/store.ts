@@ -133,7 +133,7 @@ export const useStore = create<AppStore>()(
       },
 
       signOut: () => {
-        set({ user: null, accessToken: null, playlists: [], likedTrackIDs: new Set(), savedTrackIDs: new Set() })
+        set({ user: null, accessToken: null, playlists: [], likedTrackIDs: new Set(), likedTracks: [], savedTrackIDs: new Set() })
       },
 
       // ── Navigation ─────────────────────────────────────────────────────────
@@ -252,7 +252,11 @@ export const useStore = create<AppStore>()(
         set({ playlists: pl })
         const liked = await fetchLikedSongs(accessToken)
         const likedIDs = new Set(liked.map(t => t.youtubeVideoID))
-        set({ likedTrackIDs: likedIDs, likedTracks: liked })
+        set(s => ({
+          likedTrackIDs: likedIDs,
+          likedTracks: liked,
+          playlistTracks: { ...s.playlistTracks, LL: liked },
+        }))
       },
 
       customPlaylists: [],
@@ -287,6 +291,27 @@ export const useStore = create<AppStore>()(
       loadPlaylistTracks: async (playlist: Playlist): Promise<Track[]> => {
         const { accessToken, playlistTracks } = get()
         if (playlist.kind === 'custom') return playlistTracks[playlist.id] ?? []
+        if (playlist.kind === 'likedMusic') {
+          const cached = playlistTracks.LL ?? get().likedTracks
+          if (cached.length > 0) return cached
+          if (!accessToken) return []
+          const tracks = await fetchLikedSongs(accessToken)
+          set(s => ({
+            likedTracks: tracks,
+            likedTrackIDs: new Set(tracks.map(t => t.youtubeVideoID)),
+            playlistTracks: { ...s.playlistTracks, LL: tracks },
+          }))
+          return tracks
+        }
+        if (playlist.kind === 'savedSongs') {
+          const { savedTrackIDs, historyTracks, featuredTracks, likedTracks } = get()
+          const seen = new Set<string>()
+          return [...historyTracks, ...featuredTracks, ...likedTracks].filter(track => {
+            if (seen.has(track.youtubeVideoID)) return false
+            seen.add(track.youtubeVideoID)
+            return savedTrackIDs.has(track.youtubeVideoID)
+          })
+        }
         const tracks = await fetchPlaylistTracks(playlist.id, accessToken ?? undefined)
         set(s => ({ playlistTracks: { ...s.playlistTracks, [playlist.id]: tracks } }))
         return tracks

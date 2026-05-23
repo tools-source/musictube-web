@@ -9,7 +9,7 @@ import type { SearchTab, MusicCollection, Track } from '../types'
 
 
 
-const TABS: SearchTab[] = ['Songs', 'Albums', 'Artists']
+const TABS: SearchTab[] = ['Songs', 'Albums', 'Playlists', 'Artists']
 
 export default function SearchView() {
   const searchQuery = useStore(s => s.searchQuery)
@@ -28,6 +28,7 @@ export default function SearchView() {
 
   const [tab, setTab] = useState<SearchTab>('Songs')
   const [isFocused, setIsFocused] = useState(false)
+  const [openCollection, setOpenCollection] = useState<MusicCollection | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const debouncedSearch = useCallback(
@@ -45,10 +46,15 @@ export default function SearchView() {
 
   const availableTabs = TABS.filter(t => {
     if (t === 'Songs') return true
-    if (t === 'Albums') return searchResults.playlists.length > 0 || searchResults.albums.length > 0
+    if (t === 'Albums') return searchResults.albums.length > 0
+    if (t === 'Playlists') return searchResults.playlists.length > 0
     if (t === 'Artists') return searchResults.artists.length > 0
     return false
   })
+
+  useEffect(() => {
+    if (!availableTabs.includes(tab)) setTab(availableTabs[0] ?? 'Songs')
+  }, [availableTabs, tab])
 
   const handleSubmit = () => {
     const q = searchQuery.trim()
@@ -67,14 +73,19 @@ export default function SearchView() {
   const clear = () => {
     setSearchQuery('')
     clearSearch()
+    setOpenCollection(null)
     inputRef.current?.focus()
+  }
+
+  if (openCollection) {
+    return <CollectionDetail collection={openCollection} onBack={() => setOpenCollection(null)} />
   }
 
   return (
     <div className="flex flex-col gap-4 px-5 pt-3 pb-4">
       {/* Search Bar */}
       <div className="flex items-center gap-3">
-        <div className="flex-1 flex items-center gap-3 bg-card rounded-2xl px-4 py-3.5">
+        <div className="flex-1 flex items-center gap-3 bg-card rounded-lg px-4 py-3.5 border border-white/[0.06]">
           <svg className="w-4 h-4 text-text-tertiary shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
           </svg>
@@ -136,7 +147,7 @@ export default function SearchView() {
 
       {/* Empty state — only when no query and no recent searches */}
       {!searchQuery && recentSearches.length === 0 && (
-        <div className="py-6 px-4 rounded-2xl bg-card">
+        <div className="py-6 px-4 rounded-lg bg-card border border-white/[0.06]">
           <p className="text-sm text-text-secondary">
             Search for songs, playlists, albums, and artists, then save anything you like to your library.
           </p>
@@ -184,12 +195,21 @@ export default function SearchView() {
             />
           )}
 
-          {/* Album/Playlist results */}
+          {/* Album results */}
           {tab === 'Albums' && (
             <CollectionResults
-              collections={[...searchResults.albums, ...searchResults.playlists]}
-              title="Albums & Playlists"
-              onPlayCollection={(_col, tracks) => play(tracks[0], tracks)}
+              collections={searchResults.albums}
+              title="Albums"
+              onOpenCollection={setOpenCollection}
+            />
+          )}
+
+          {/* Playlist results */}
+          {tab === 'Playlists' && (
+            <CollectionResults
+              collections={searchResults.playlists}
+              title="Playlists"
+              onOpenCollection={setOpenCollection}
             />
           )}
 
@@ -198,7 +218,6 @@ export default function SearchView() {
             <CollectionResults
               collections={searchResults.artists}
               title="Artists"
-              onPlayCollection={(_col, tracks) => play(tracks[0], tracks)}
             />
           )}
 
@@ -207,7 +226,7 @@ export default function SearchView() {
             <button
               onClick={loadMoreSearch}
               disabled={isLoadingMore}
-              className="w-full py-3.5 rounded-2xl bg-control text-sm font-semibold text-text-primary flex items-center justify-center gap-2 disabled:opacity-60"
+              className="w-full py-3.5 rounded-lg bg-control text-sm font-semibold text-text-primary flex items-center justify-center gap-2 disabled:opacity-60"
             >
               {isLoadingMore ? (
                 <>
@@ -259,11 +278,11 @@ function SongResults({
 function CollectionResults({
   collections,
   title,
-  onPlayCollection,
+  onOpenCollection,
 }: {
   collections: MusicCollection[]
   title: string
-  onPlayCollection: (col: MusicCollection, tracks: Track[]) => void
+  onOpenCollection?: (col: MusicCollection) => void
 }) {
   if (collections.length === 0) {
     return <StatusCard label={`No ${title.toLowerCase()} matched that search.`} />
@@ -274,7 +293,7 @@ function CollectionResults({
       <h3 className="text-base font-bold text-text-primary mb-2">{title}</h3>
       {collections.map((col, i) => (
         <div key={col.id}>
-          <CollectionRow collection={col} onPlay={onPlayCollection} />
+          <CollectionRow collection={col} onOpen={onOpenCollection} />
           {i < collections.length - 1 && <div className="h-px bg-divider ml-16" />}
         </div>
       ))}
@@ -284,43 +303,30 @@ function CollectionResults({
 
 function CollectionRow({
   collection,
-  onPlay,
+  onOpen,
 }: {
   collection: MusicCollection
-  onPlay: (col: MusicCollection, tracks: Track[]) => void
+  onOpen?: (col: MusicCollection) => void
 }) {
   const toggleCollectionSaved = useStore(s => s.toggleCollectionSaved)
   const savedCollections = useStore(s => s.savedCollections)
-  const accessToken = useStore(s => s.accessToken)
   const isSaved = savedCollections.some(c => c.id === collection.id)
-  const [loading, setLoading] = useState(false)
 
   const kindLabel = collection.kind === 'playlist' ? 'Playlist' : collection.kind === 'album' ? 'Album' : 'Artist'
 
-  const handlePlay = async () => {
-    if (loading || !collection.sourceID) return
-    setLoading(true)
-    try {
-      const tracks = await fetchPlaylistTracks(collection.sourceID, accessToken ?? undefined)
-      if (tracks.length > 0) onPlay(collection, tracks)
-    } finally {
-      setLoading(false)
-    }
+  const handleOpen = () => {
+    if (collection.kind === 'artist' || !onOpen) return
+    onOpen(collection)
   }
 
   return (
-    <div className="flex items-center gap-3 py-2 cursor-pointer group" onClick={handlePlay}>
+    <div className={`flex items-center gap-3 py-2 group ${collection.kind === 'artist' ? '' : 'cursor-pointer'}`} onClick={handleOpen}>
       <div className="relative shrink-0">
         <ArtworkImage
           url={collection.artworkURL}
           alt={collection.title}
-          className={`w-13 h-13 ${collection.kind === 'artist' ? 'rounded-full' : 'rounded-xl'}`}
+          className={`w-13 h-13 ${collection.kind === 'artist' ? 'rounded-full' : 'rounded-lg'}`}
         />
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/50">
-            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          </div>
-        )}
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-text-primary truncate group-hover:text-accent transition-colors">{collection.title}</p>
@@ -347,9 +353,75 @@ function CollectionRow({
   )
 }
 
+function CollectionDetail({ collection, onBack }: { collection: MusicCollection; onBack: () => void }) {
+  const accessToken = useStore(s => s.accessToken)
+  const play = useStore(s => s.play)
+  const [tracks, setTracks] = useState<Track[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    fetchPlaylistTracks(collection.sourceID, accessToken ?? undefined)
+      .then(result => {
+        if (!active) return
+        setTracks(result)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => { active = false }
+  }, [collection.sourceID, accessToken])
+
+  return (
+    <div className="flex flex-col gap-4 px-5 pt-3 pb-4">
+      <button onClick={onBack} className="flex items-center gap-2 text-accent text-sm font-semibold">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+        </svg>
+        Search
+      </button>
+
+      <div className="flex items-center gap-4 p-4 rounded-lg bg-white/[0.035] border border-glass-stroke">
+        <ArtworkImage url={collection.artworkURL} alt={collection.title} className="w-24 h-24 rounded-lg" />
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">
+            {collection.kind === 'album' ? 'Album' : 'Playlist'}
+          </p>
+          <h1 className="text-xl font-bold text-text-primary leading-tight mt-1 line-clamp-2">{collection.title}</h1>
+          <p className="text-sm text-text-secondary truncate mt-1">{collection.subtitle}</p>
+          {tracks.length > 0 && (
+            <button
+              onClick={() => play(tracks[0], tracks)}
+              className="mt-3 px-4 py-2 rounded-lg bg-accent text-white text-xs font-bold"
+            >
+              Play all
+            </button>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <StatusCard label="Loading tracks…" showProgress />
+      ) : tracks.length === 0 ? (
+        <StatusCard label="No playable tracks found in this collection." />
+      ) : (
+        <div className="space-y-0">
+          {tracks.map((track, i) => (
+            <div key={track.youtubeVideoID}>
+              <TrackRow track={track} onPlay={() => play(track, tracks)} showIndex={i} />
+              {i < tracks.length - 1 && <div className="h-px bg-divider ml-16" />}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function StatusCard({ label, showProgress = false }: { label: string; showProgress?: boolean }) {
   return (
-    <div className="flex items-center gap-3 py-4 px-4 rounded-2xl bg-card">
+    <div className="flex items-center gap-3 py-4 px-4 rounded-lg bg-card border border-white/[0.06]">
       {showProgress && (
         <div className="w-4 h-4 border-2 border-text-tertiary border-t-text-primary rounded-full animate-spin shrink-0" />
       )}

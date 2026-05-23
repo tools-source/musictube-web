@@ -14,7 +14,10 @@ export default function LibraryView() {
 
   return (
     <div className="flex flex-col gap-6 px-5 pt-3 pb-4">
-      <h1 className="text-3xl font-bold text-text-primary">Library</h1>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">MusicTube</p>
+        <h1 className="text-3xl font-bold text-text-primary mt-1">Library</h1>
+      </div>
 
       {/* Account card */}
       <SectionCard title={accessToken ? 'Account' : 'Guest Mode'}>
@@ -53,17 +56,14 @@ export default function LibraryView() {
         )}
       </SectionCard>
 
-      {/* History */}
-      <HistorySection />
-
-      {/* Liked Songs */}
-      <LikedSongsSection />
-
-      {/* Saved Songs */}
-      <SavedSongsSection />
+      {/* Library folders */}
+      <FoldersSection />
 
       {/* Your Playlists */}
       <PlaylistsSection />
+
+      {/* History */}
+      <HistorySection />
 
       {/* Saved Collections */}
       <SavedCollectionsSection />
@@ -112,75 +112,63 @@ function HistorySection() {
   )
 }
 
-// ── Liked Songs ───────────────────────────────────────────────────────────────
+// ── Library folders ──────────────────────────────────────────────────────────
 
-function LikedSongsSection() {
+function FoldersSection() {
   const historyTracks = useStore(s => s.historyTracks)
   const featuredTracks = useStore(s => s.featuredTracks)
   const likedTrackIDs = useStore(s => s.likedTrackIDs)
   const likedTracksFromYT = useStore(s => s.likedTracks) ?? []
-  const play = useStore(s => s.play)
+  const savedTrackIDs = useStore(s => s.savedTrackIDs)
+  const accessToken = useStore(s => s.accessToken)
+  const [openFolder, setOpenFolder] = useState<Playlist | null>(null)
 
-  // Merge YouTube liked tracks + locally liked tracks from known tracks
-  const seen = new Set<string>()
-  const locallyLiked = [...historyTracks, ...featuredTracks].filter(t => {
-    if (seen.has(t.youtubeVideoID)) return false
-    seen.add(t.youtubeVideoID)
-    return likedTrackIDs.has(t.youtubeVideoID)
-  })
-  // Add YouTube liked tracks that aren't already in locallyLiked
-  const likedTracks = [
-    ...locallyLiked,
-    ...likedTracksFromYT.filter(t => !seen.has(t.youtubeVideoID)),
+  const knownTracks = [...likedTracksFromYT, ...historyTracks, ...featuredTracks]
+  const firstLiked = knownTracks.find(t => likedTrackIDs.has(t.youtubeVideoID)) ?? likedTracksFromYT[0]
+  const firstSaved = knownTracks.find(t => savedTrackIDs.has(t.youtubeVideoID))
+  const likedCount = new Set([...likedTrackIDs, ...likedTracksFromYT.map(t => t.youtubeVideoID)]).size
+  const savedCount = savedTrackIDs.size
+
+  const folders: Playlist[] = [
+    ...(accessToken || likedCount > 0
+      ? [{
+          id: 'LL',
+          title: 'Liked Music',
+          description: 'Imported from your YouTube account and local hearts.',
+          artworkURL: firstLiked?.artworkURL ?? null,
+          itemCount: likedCount,
+          kind: 'likedMusic' as const,
+        }]
+      : []),
+    ...(savedCount > 0
+      ? [{
+          id: 'saved-songs',
+          title: 'Saved Songs',
+          description: 'Tracks bookmarked in MusicTube.',
+          artworkURL: firstSaved?.artworkURL ?? null,
+          itemCount: savedCount,
+          kind: 'savedSongs' as const,
+        }]
+      : []),
   ]
 
-  return (
-    <SectionCard title="Liked Songs">
-      {likedTracks.length === 0 ? (
-        <p className="text-sm text-text-secondary">Tap the heart on a song to keep it here.</p>
-      ) : (
-        <div className="space-y-0">
-          {likedTracks.map((track, i) => (
-            <div key={track.youtubeVideoID}>
-              <TrackRow track={track} onPlay={() => play(track, likedTracks)} />
-              {i < likedTracks.length - 1 && <div className="h-px bg-divider ml-16" />}
-            </div>
-          ))}
-        </div>
-      )}
-    </SectionCard>
-  )
-}
-
-// ── Saved Songs ───────────────────────────────────────────────────────────────
-
-function SavedSongsSection() {
-  const historyTracks = useStore(s => s.historyTracks)
-  const featuredTracks = useStore(s => s.featuredTracks)
-  const savedTrackIDs = useStore(s => s.savedTrackIDs)
-  const play = useStore(s => s.play)
-
-  const allKnown = [...historyTracks, ...featuredTracks]
-  const seen = new Set<string>()
-  const savedTracks = allKnown.filter(t => {
-    if (seen.has(t.youtubeVideoID)) return false
-    seen.add(t.youtubeVideoID)
-    return savedTrackIDs.has(t.youtubeVideoID)
-  })
+  if (openFolder) {
+    return <PlaylistDetail playlist={openFolder} onBack={() => setOpenFolder(null)} />
+  }
 
   return (
-    <SectionCard title="Saved Songs">
-      {savedTracks.length === 0 ? (
-        <p className="text-sm text-text-secondary">
-          Save any song from Search, Home, or the Player and it'll show up here.
-        </p>
+    <SectionCard title="Folders">
+      {folders.length === 0 ? (
+        <p className="text-sm text-text-secondary">Like or save tracks to create folders here.</p>
       ) : (
         <div className="space-y-0">
-          {savedTracks.map((track, i) => (
-            <div key={track.youtubeVideoID}>
-              <TrackRow track={track} onPlay={() => play(track, savedTracks)} />
-              {i < savedTracks.length - 1 && <div className="h-px bg-divider ml-16" />}
-            </div>
+          {folders.map((folder, i) => (
+            <FolderRow
+              key={folder.id}
+              folder={folder}
+              onOpen={() => setOpenFolder(folder)}
+              showDivider={i < folders.length - 1}
+            />
           ))}
         </div>
       )}
@@ -206,10 +194,10 @@ function PlaylistsSection() {
   }
 
   return (
-    <SectionCard title="Your Playlists">
+    <SectionCard title="Playlist Folders">
       <button
         onClick={() => setCreating(true)}
-        className="w-full flex items-center gap-3 py-3 px-4 rounded-2xl bg-control/50 text-sm font-semibold text-text-primary"
+        className="w-full flex items-center gap-3 py-3 px-4 rounded-lg bg-control/50 text-sm font-semibold text-text-primary"
       >
         <svg className="w-5 h-5 text-accent" fill="currentColor" viewBox="0 0 24 24">
           <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
@@ -231,11 +219,11 @@ function PlaylistsSection() {
               if (e.key === 'Escape') { setCreating(false); setNewName('') }
             }}
             placeholder="Playlist name…"
-            className="flex-1 bg-card text-text-primary text-sm px-3 py-2 rounded-xl outline-none placeholder:text-text-tertiary"
+            className="flex-1 bg-card text-text-primary text-sm px-3 py-2 rounded-lg outline-none placeholder:text-text-tertiary"
           />
           <button
             onClick={() => { if (newName.trim()) { createPlaylist(newName.trim()); setNewName(''); setCreating(false) } }}
-            className="px-3 py-2 bg-accent text-white text-sm font-semibold rounded-xl"
+            className="px-3 py-2 bg-accent text-white text-sm font-semibold rounded-lg"
           >
             Create
           </button>
@@ -246,29 +234,13 @@ function PlaylistsSection() {
       {allPlaylists.length > 0 && (
         <div className="mt-3 space-y-0">
           {allPlaylists.map((pl, i) => (
-            <div key={pl.id}>
-              <div className="flex items-center gap-3 py-2 cursor-pointer" onClick={() => setOpenPlaylist(pl)}>
-                <ArtworkImage url={pl.artworkURL} alt={pl.title} className="w-13 h-13 rounded-xl" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-text-primary truncate">{pl.title}</p>
-                  <p className="text-xs text-text-secondary">{pl.itemCount} tracks</p>
-                </div>
-                {pl.kind === 'custom' && (
-                  <button
-                    onClick={e => { e.stopPropagation(); deletePlaylist(pl.id) }}
-                    className="w-8 h-8 flex items-center justify-center text-red-400"
-                  >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
-                    </svg>
-                  </button>
-                )}
-                <svg className="w-4 h-4 text-text-tertiary shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-              {i < allPlaylists.length - 1 && <div className="h-px bg-divider ml-16" />}
-            </div>
+            <FolderRow
+              key={pl.id}
+              folder={pl}
+              onOpen={() => setOpenPlaylist(pl)}
+              onDelete={pl.kind === 'custom' ? () => deletePlaylist(pl.id) : undefined}
+              showDivider={i < allPlaylists.length - 1}
+            />
           ))}
         </div>
       )}
@@ -304,6 +276,21 @@ function PlaylistDetail({ playlist, onBack }: { playlist: Playlist; onBack: () =
         Library
       </button>
       <SectionCard title={playlist.title}>
+        <div className="flex items-center gap-4 pb-4">
+          <ArtworkImage url={playlist.artworkURL} alt={playlist.title} className="w-20 h-20 rounded-lg" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-text-primary truncate">{playlist.title}</p>
+            <p className="text-xs text-text-secondary mt-1">{tracks.length || playlist.itemCount} tracks</p>
+            {tracks.length > 0 && (
+              <button
+                onClick={() => play(tracks[0], tracks)}
+                className="mt-3 px-4 py-2 rounded-lg bg-accent text-white text-xs font-bold"
+              >
+                Play all
+              </button>
+            )}
+          </div>
+        </div>
         {loading ? (
           <p className="text-sm text-text-secondary">Loading…</p>
         ) : tracks.length === 0 ? (
@@ -319,6 +306,57 @@ function PlaylistDetail({ playlist, onBack }: { playlist: Playlist; onBack: () =
           </div>
         )}
       </SectionCard>
+    </div>
+  )
+}
+
+function FolderRow({
+  folder,
+  onOpen,
+  onDelete,
+  showDivider,
+}: {
+  folder: Playlist
+  onOpen: () => void
+  onDelete?: () => void
+  showDivider?: boolean
+}) {
+  const kindLabel = folder.kind === 'custom'
+    ? 'Local folder'
+    : folder.kind === 'likedMusic'
+    ? 'Liked folder'
+    : folder.kind === 'savedSongs'
+    ? 'Saved folder'
+    : 'YouTube folder'
+
+  return (
+    <div>
+      <div className="w-full flex items-center gap-3 py-2">
+        <button className="flex flex-1 min-w-0 items-center gap-3 text-left group" onClick={onOpen}>
+        <ArtworkImage url={folder.artworkURL} alt={folder.title} className="w-13 h-13 rounded-lg" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-text-primary truncate group-hover:text-accent transition-colors">{folder.title}</p>
+          <p className="text-xs text-text-secondary truncate">
+            {kindLabel} · {folder.itemCount} tracks
+          </p>
+        </div>
+        <svg className="w-4 h-4 text-text-tertiary shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+        </button>
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            className="w-8 h-8 flex items-center justify-center text-red-400"
+            aria-label={`Delete ${folder.title}`}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+            </svg>
+          </button>
+        )}
+      </div>
+      {showDivider && <div className="h-px bg-divider ml-16" />}
     </div>
   )
 }
@@ -400,7 +438,7 @@ function SectionCard({ title, children }: { title: string; children: React.React
   return (
     <div>
       <h2 className="text-lg font-bold text-text-primary mb-3">{title}</h2>
-      <div className="p-4 rounded-3xl bg-white/[0.03] border border-glass-stroke backdrop-blur-sm">
+      <div className="p-4 rounded-lg bg-white/[0.035] border border-glass-stroke backdrop-blur-sm">
         {children}
       </div>
     </div>

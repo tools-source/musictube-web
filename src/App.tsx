@@ -50,6 +50,11 @@ export default function App() {
   const [installDismissed, setInstallDismissed] = useState(false)
 
   useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab')
+    if (tab === 'home' || tab === 'search' || tab === 'library') setActiveTab(tab)
+  }, [setActiveTab])
+
+  useEffect(() => {
     const handler = (e: Event) => {
       e.preventDefault()
       setInstallPrompt(e as BeforeInstallPromptEvent)

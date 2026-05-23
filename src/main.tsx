@@ -15,6 +15,7 @@ createRoot(document.getElementById('root')!).render(
 // Register service worker for PWA / home screen install
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {/* non-critical */})
+    const base = import.meta.env.BASE_URL
+    navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {/* non-critical */})
   })
 }

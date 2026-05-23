@@ -103,7 +103,12 @@ export default function App() {
       {/* Main scrollable content */}
       <main
         className="flex-1 overflow-y-auto scrollbar-hide"
-        style={{ paddingBottom: nowPlaying ? '136px' : '72px' }}
+        style={{
+          paddingTop: 'var(--safe-top)',
+          paddingBottom: nowPlaying
+            ? 'calc(136px + var(--safe-bottom))'
+            : 'var(--tabbar-total-height)',
+        }}
       >
         {activeTab === 'home' && <HomeView />}
         {activeTab === 'search' && <SearchView />}
@@ -122,7 +127,7 @@ export default function App() {
       {/* Tab bar */}
       <nav
         className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around bg-black/60 backdrop-blur-xl border-t border-white/[0.07]"
-        style={{ height: '64px', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        style={{ height: 'var(--tabbar-total-height)', paddingBottom: 'var(--safe-bottom)' }}
       >
         {NAV_ITEMS.map(item => {
           const isActive = activeTab === item.id

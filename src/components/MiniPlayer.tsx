@@ -16,12 +16,21 @@ export default function MiniPlayer() {
 
   return (
     <div
-      className="fixed bottom-16 left-0 right-0 z-40 px-3"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      className="fixed left-0 right-0 z-40 px-3"
+      style={{ bottom: 'var(--tabbar-total-height)' }}
     >
       <div
+        role="button"
+        tabIndex={0}
+        aria-label="Open player"
         className="flex items-center gap-3 px-3 py-2 rounded-2xl bg-white/[0.12] backdrop-blur-xl border border-white/10 shadow-2xl cursor-pointer"
         onClick={openPlayer}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            openPlayer()
+          }
+        }}
       >
         <div className="relative shrink-0">
           <ArtworkImage url={nowPlaying.artworkURL} alt={nowPlaying.title} className="w-11 h-11 rounded-xl" />

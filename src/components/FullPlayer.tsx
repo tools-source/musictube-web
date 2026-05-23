@@ -51,10 +51,13 @@ export default function FullPlayer() {
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex flex-col transition-transform duration-300 ease-out ${
+      className={`fixed inset-0 z-[70] flex flex-col transition-transform duration-300 ease-out ${
         isOpen ? 'translate-y-0' : 'translate-y-full'
       }`}
-      style={{ background: 'linear-gradient(160deg, #07070E 0%, #140210 50%, #0A080F 100%)' }}
+      style={{
+        background: 'linear-gradient(160deg, #07070E 0%, #140210 50%, #0A080F 100%)',
+        paddingTop: 'var(--safe-top)',
+      }}
     >
       {/* Background blobs */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -136,9 +139,9 @@ export default function FullPlayer() {
 
         {/* Progress */}
         <div className="mb-6 p-4 rounded-3xl bg-white/[0.06] border border-white/[0.08] backdrop-blur-sm">
-          <div className="relative mb-3">
+          <div className="relative mx-1 mb-4 h-8 flex items-center">
             {/* Buffered bar */}
-            <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-1.5 rounded-full bg-white/10 overflow-hidden">
+            <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-white/10 overflow-hidden">
               <div className="h-full bg-white/25 rounded-full transition-all duration-200" style={{ width: `${buffered * 100}%` }} />
             </div>
             {/* Input range */}
@@ -153,7 +156,7 @@ export default function FullPlayer() {
               onTouchStart={handleScrubStart}
               onMouseUp={e => handleScrubEnd(e as unknown as React.ChangeEvent<HTMLInputElement>)}
               onTouchEnd={e => handleScrubEnd(e as unknown as React.ChangeEvent<HTMLInputElement>)}
-              className="relative w-full h-1.5 rounded-full appearance-none cursor-pointer bg-transparent z-10 scrubber"
+              className="relative z-10 w-full h-8 cursor-pointer bg-transparent scrubber"
               style={{ '--progress': `${progress * 100}%` } as React.CSSProperties}
             />
           </div>

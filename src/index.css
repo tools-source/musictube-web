@@ -4,6 +4,10 @@
 
 :root {
   color-scheme: dark;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --tabbar-height: 64px;
+  --tabbar-total-height: calc(var(--tabbar-height) + var(--safe-bottom));
 }
 
 * {
@@ -31,6 +35,8 @@ body {
 /* Custom scrubber */
 .scrubber {
   --progress: 0%;
+  -webkit-appearance: none;
+  appearance: none;
   background: linear-gradient(
     to right,
     #FF3B6B 0%,
@@ -39,18 +45,29 @@ body {
     transparent 100%
   );
 }
+.scrubber::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
 .scrubber::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
   border-radius: 50%;
   background: #FF3B6B;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(255,59,107,0.4);
 }
+.scrubber::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
 .scrubber::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: #FF3B6B;
   cursor: pointer;
@@ -68,6 +85,10 @@ body {
 /* Safe area bottom padding */
 .pb-safe {
   padding-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
+}
+
+.pt-safe {
+  padding-top: var(--safe-top);
 }
 
 /* Prevent text selection on interactive elements */

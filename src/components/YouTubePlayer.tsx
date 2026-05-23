@@ -71,6 +71,10 @@ function onYTReady(cb: () => void) {
   ytCallbacks.push(cb)
 }
 
+function hasPlayerAPI(player: YTPlayer | null): player is YTPlayer {
+  return typeof player?.loadVideoById === 'function' && typeof player.playVideo === 'function'
+}
+
 window.onYouTubeIframeAPIReady = () => {
   ytReady = true
   ytCallbacks.forEach(cb => cb())
@@ -91,6 +95,7 @@ export default function YouTubePlayer() {
   const playerRef = useRef<YTPlayer | null>(null)
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const isExternalPause = useRef(false)
+  const shouldResumeOnReturn = useRef(false)
 
   // Load YT script once
   useEffect(() => { loadYTScript() }, [])
@@ -107,10 +112,12 @@ export default function YouTubePlayer() {
     const init = () => {
       if (!containerRef.current) return
 
-      if (playerRef.current) {
+      if (hasPlayerAPI(playerRef.current)) {
         playerRef.current.loadVideoById(nowPlaying.youtubeVideoID)
         return
       }
+      ;(playerRef.current as Partial<YTPlayer> | null)?.destroy?.()
+      playerRef.current = null
 
       playerRef.current = new window.YT.Player(containerRef.current, {
         videoId: nowPlaying.youtubeVideoID,
@@ -227,6 +234,31 @@ export default function YouTubePlayer() {
       }
     }
   }, [playbackState.currentTime, playbackState.duration, playbackState.isPlaying])
+
+  useEffect(() => {
+    const rememberPlaybackIntent = () => {
+      shouldResumeOnReturn.current = playbackState.isPlaying
+    }
+    const resumeIfNeeded = () => {
+      if (!shouldResumeOnReturn.current) return
+      playerRef.current?.playVideo()
+      setPlaybackState({ isPlaying: true })
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') rememberPlaybackIntent()
+      if (document.visibilityState === 'visible') resumeIfNeeded()
+    }
+
+    window.addEventListener('pagehide', rememberPlaybackIntent)
+    window.addEventListener('pageshow', resumeIfNeeded)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('pagehide', rememberPlaybackIntent)
+      window.removeEventListener('pageshow', resumeIfNeeded)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [playbackState.isPlaying, setPlaybackState])
 
   // Tick to update currentTime/duration/buffer
   function startTick() {
